@@ -112,9 +112,14 @@ async def _groq_report(result: ScanResult) -> str | None:
 
 # ── Shared prompt ─────────────────────────────────────────────────────────────
 
+_MAX_FINDINGS_IN_PROMPT = 12
+
+
 def _build_prompt(result: ScanResult) -> str:
     """Build the security report prompt sent to any LLM."""
     sorted_findings = result.sorted_findings()
+    included = sorted_findings[:_MAX_FINDINGS_IN_PROMPT]
+    omitted = len(sorted_findings) - len(included)
     findings_json = json.dumps(
         [
             {
@@ -122,20 +127,17 @@ def _build_prompt(result: ScanResult) -> str:
                 "name": f.name,
                 "severity": f.severity.value,
                 "affected_asset": f.affected_asset,
-                "evidence": f.evidence[:250],
-                "risk_explanation": f.risk_explanation,
-                "attacker_impact": f.attacker_impact,
-                "business_impact": f.business_impact,
-                "recommended_fix": f.recommended_fix,
-                "remediation_effort": f.remediation_effort.value,
-                "confidence": f.confidence,
-                "validation_steps": f.validation_steps,
+                "evidence": f.evidence[:120],
+                "risk": f.risk_explanation[:200],
+                "fix": f.recommended_fix[:200],
+                "effort": f.remediation_effort.value,
                 "category": f.category,
             }
-            for f in sorted_findings
+            for f in included
         ],
-        indent=2,
+        separators=(",", ":"),
     )
+    omitted_note = f"\n(+ {omitted} lower-severity findings omitted for brevity)" if omitted else ""
 
     tech_summary = ", ".join(result.technologies_detected[:8]) or "Not detected"
     open_ports = ", ".join(f"{p.port}/{p.service}" for p in result.open_ports[:10]) or "None detected"
@@ -159,7 +161,7 @@ Technologies: {tech_summary}
 Open Ports: {open_ports}
 
 FINDINGS (JSON):
-{findings_json}
+{findings_json}{omitted_note}
 
 Write a report with these sections:
 
